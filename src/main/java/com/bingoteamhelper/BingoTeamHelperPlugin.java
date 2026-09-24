@@ -6,7 +6,13 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
+import net.runelite.api.Player;
+import net.runelite.api.events.ClientTick;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -42,6 +48,9 @@ public class BingoTeamHelperPlugin extends Plugin
 	@Inject
 	private BingoTeamHelperConfig config;
 
+	@Inject
+	private Client client;
+
 	private NavigationButton navButton;
 
 	@Override
@@ -74,6 +83,63 @@ public class BingoTeamHelperPlugin extends Plugin
 	BingoTeamHelperConfig provideConfig(ConfigManager configManager)
 	{
 		return configManager.getConfig(BingoTeamHelperConfig.class);
+	}
+
+	@Subscribe(priority = -1)
+	public void onClientTick(ClientTick clientTick)
+	{
+		if (!config.showIndicators() || client.isMenuOpen())
+		{
+			return;
+		}
+
+		for (MenuEntry entry : client.getMenuEntries())
+		{
+			if (!isPlayerMenuAction(entry.getType()))
+			{
+				continue;
+			}
+
+			Player player = entry.getPlayer();
+			if (player == null || player.getName() == null)
+			{
+				continue;
+			}
+
+			PlayerTeamInfo teamInfo = teamService.getTeamInfoForPlayer(player.getName());
+			if (teamInfo == null)
+			{
+				continue;
+			}
+
+			entry.setTarget(TeamMenuTargetDecorator.decorate(
+				entry.getTarget(),
+				teamInfo,
+				config.showTags()
+			));
+		}
+	}
+
+	private static boolean isPlayerMenuAction(MenuAction type)
+	{
+		switch (type)
+		{
+			case WALK:
+			case WIDGET_TARGET_ON_PLAYER:
+			case ITEM_USE_ON_PLAYER:
+			case PLAYER_FIRST_OPTION:
+			case PLAYER_SECOND_OPTION:
+			case PLAYER_THIRD_OPTION:
+			case PLAYER_FOURTH_OPTION:
+			case PLAYER_FIFTH_OPTION:
+			case PLAYER_SIXTH_OPTION:
+			case PLAYER_SEVENTH_OPTION:
+			case PLAYER_EIGHTH_OPTION:
+			case RUNELITE_PLAYER:
+				return true;
+			default:
+				return false;
+		}
 	}
 
 	private static BufferedImage createPanelIcon()

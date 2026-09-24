@@ -19,6 +19,11 @@ public class TeamService
 {
 	private static final String CONFIG_GROUP = "bingo-team-helper";
 	private static final String CONFIG_KEY = "teams";
+	/** Matches {@link net.runelite.client.ui.FontManager#getRunescapeFont()} / Player Indicators. */
+	static final int DEFAULT_NAME_FONT_SIZE = 16;
+	private static final int LEGACY_NAME_FONT_SIZE = 9;
+	static final int MIN_NAME_FONT_SIZE = 6;
+	static final int MAX_NAME_FONT_SIZE = 32;
 
 	private static final Color[] PRESET_COLORS = {
 		new Color(231, 76, 60),
@@ -65,6 +70,11 @@ public class TeamService
 		}
 
 		teams = new ArrayList<>(loaded);
+		for (TeamData team : teams)
+		{
+			normalizeTeamName(team);
+			normalizeNameFont(team);
+		}
 		rebuildLookup();
 	}
 
@@ -100,15 +110,13 @@ public class TeamService
 
 		for (TeamData team : imported)
 		{
-			if (team.getName() == null || team.getName().trim().isEmpty())
-			{
-				return false;
-			}
-
 			if (team.getMembers() == null)
 			{
 				team.setMembers("");
 			}
+
+			normalizeTeamName(team);
+			normalizeNameFont(team);
 		}
 
 		saveTeams(imported);
@@ -121,6 +129,8 @@ public class TeamService
 		team.setName("Team " + teamNumber);
 		team.setColor(PRESET_COLORS[(teamNumber - 1) % PRESET_COLORS.length]);
 		team.setMembers("");
+		team.setNameFontSize(0);
+		team.setNameBold(false);
 		return team;
 	}
 
@@ -155,7 +165,9 @@ public class TeamService
 
 			PlayerTeamInfo info = new PlayerTeamInfo(
 				team.getColor(),
-				team.getName()
+				team.getName(),
+				team.getNameFontSize(),
+				team.isNameBold()
 			);
 
 			for (String line : team.getMembers().split("\\R"))
@@ -166,7 +178,9 @@ public class TeamService
 					continue;
 				}
 
-				lookup.put(normalizeName(trimmed), info);
+				String key = normalizeName(trimmed);
+				// First team in the list wins when a player appears on multiple teams.
+				lookup.putIfAbsent(key, info);
 			}
 		}
 
@@ -176,5 +190,42 @@ public class TeamService
 	private static String normalizeName(String name)
 	{
 		return Text.standardize(name);
+	}
+
+	static int resolveFontSize(int fontSize)
+	{
+		if (fontSize <= 0)
+		{
+			return DEFAULT_NAME_FONT_SIZE;
+		}
+		return Math.max(MIN_NAME_FONT_SIZE, Math.min(MAX_NAME_FONT_SIZE, fontSize));
+	}
+
+	static boolean isDefaultNameFont(int fontSize, boolean bold)
+	{
+		return !bold && fontSize <= 0;
+	}
+
+	private static void normalizeTeamName(TeamData team)
+	{
+		if (team.getName() == null)
+		{
+			team.setName("");
+		}
+	}
+
+	private static void normalizeNameFont(TeamData team)
+	{
+		int size = team.getNameFontSize();
+		if (size == LEGACY_NAME_FONT_SIZE)
+		{
+			team.setNameFontSize(0);
+			return;
+		}
+
+		if (!team.isNameBold() && size == DEFAULT_NAME_FONT_SIZE)
+		{
+			team.setNameFontSize(0);
+		}
 	}
 }

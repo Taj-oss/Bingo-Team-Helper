@@ -1,6 +1,7 @@
 package com.bingoteamhelper;
 
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import javax.inject.Inject;
@@ -42,9 +43,6 @@ public class BingoTeamHelperOverlay extends Overlay
 		this.teamService = teamService;
 		this.chatIconManager = chatIconManager;
 		setPosition(OverlayPosition.DYNAMIC);
-		// Same layer as Player Indicators (default UNDER_WIDGETS). ABOVE_SCENE
-		// always renders before UNDER_WIDGETS, so Player Indicators was drawing
-		// on top and hiding our labels.
 		setPriority(PRIORITY_HIGH);
 	}
 
@@ -55,6 +53,8 @@ public class BingoTeamHelperOverlay extends Overlay
 		{
 			return null;
 		}
+
+		Font overlayFont = graphics.getFont();
 
 		for (Player player : client.getPlayers())
 		{
@@ -69,27 +69,69 @@ public class BingoTeamHelperOverlay extends Overlay
 				continue;
 			}
 
+			graphics.setFont(overlayFont);
+			if (!TeamService.isDefaultNameFont(teamInfo.getFontSize(), teamInfo.isBold()))
+			{
+				graphics.setFont(createTeamFont(overlayFont, teamInfo));
+			}
+
 			String name = Text.sanitize(player.getName());
-			String displayName = teamInfo.getDisplayName(name, config.showTags());
 			java.awt.Color color = teamInfo.getColor();
 			int zOffset = player.getLogicalHeight() + ACTOR_OVERHEAD_TEXT_MARGIN;
-			Point textLocation = player.getCanvasTextLocation(graphics, displayName, zOffset);
 
+			Point textLocation = player.getCanvasTextLocation(graphics, name, zOffset);
 			if (textLocation == null)
 			{
 				continue;
 			}
 
-			BufferedImage rankImage = getRankImage(player);
-			if (rankImage != null)
+			textLocation = applyRankOffset(graphics, player, textLocation);
+
+			if (config.showTags() && teamInfo.getTeamName() != null && !teamInfo.getTeamName().isEmpty())
 			{
-				textLocation = new Point(textLocation.getX() + rankImage.getWidth() / 2, textLocation.getY());
+				String tagPrefix = "[" + teamInfo.getTeamName() + "]";
+				int tagWidth = graphics.getFontMetrics().stringWidth(tagPrefix);
+				OverlayUtil.renderTextLocation(
+					graphics,
+					new Point(textLocation.getX() - tagWidth, textLocation.getY()),
+					tagPrefix,
+					color
+				);
 			}
 
-			OverlayUtil.renderTextLocation(graphics, textLocation, displayName, color);
+			OverlayUtil.renderTextLocation(graphics, textLocation, name, color);
 		}
 
+		graphics.setFont(overlayFont);
 		return null;
+	}
+
+	private static Font createTeamFont(Font overlayFont, PlayerTeamInfo teamInfo)
+	{
+		int style = teamInfo.isBold() ? Font.BOLD : Font.PLAIN;
+		if (teamInfo.getFontSize() <= 0)
+		{
+			return overlayFont.deriveFont(style);
+		}
+		return overlayFont.deriveFont(style, (float) TeamService.resolveFontSize(teamInfo.getFontSize()));
+	}
+
+	private Point applyRankOffset(Graphics2D graphics, Player player, Point textLocation)
+	{
+		BufferedImage rankImage = getRankImage(player);
+		if (rankImage == null)
+		{
+			return textLocation;
+		}
+
+		int imageWidth = rankImage.getWidth();
+		int textHeight = graphics.getFontMetrics().getHeight() - graphics.getFontMetrics().getMaxDescent();
+		Point imageLocation = new Point(
+			textLocation.getX() - imageWidth / 2 - 1,
+			textLocation.getY() - textHeight / 2 - rankImage.getHeight() / 2
+		);
+		OverlayUtil.renderImageLocation(graphics, imageLocation, rankImage);
+		return new Point(textLocation.getX() + imageWidth / 2, textLocation.getY());
 	}
 
 	private BufferedImage getRankImage(Player player)

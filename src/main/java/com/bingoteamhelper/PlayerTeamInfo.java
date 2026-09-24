@@ -8,13 +8,6 @@ class PlayerTeamInfo
 {
 	Color color;
 	String teamName;
-
-	String getDisplayName(String playerName, boolean showTag)
-	{
-		if (showTag && teamName != null && !teamName.isEmpty())
-		{
-			return "[" + teamName + "]" + playerName;
-		}
-		return playerName;
-	}
+	int fontSize;
+	boolean bold;
 }

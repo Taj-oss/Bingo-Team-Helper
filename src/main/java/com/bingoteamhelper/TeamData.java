@@ -13,6 +13,8 @@ public class TeamData
 	private String name;
 	private int colorRgb;
 	private String members;
+	private int nameFontSize;
+	private boolean nameBold;
 
 	Color getColor()
 	{

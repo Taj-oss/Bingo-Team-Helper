@@ -1,9 +1,13 @@
 package com.bingoteamhelper;
 
+import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Point;
 import java.awt.Toolkit;
+import java.awt.event.AWTEventListener;
+import java.awt.event.MouseEvent;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.UnsupportedFlavorException;
@@ -20,6 +24,7 @@ import javax.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.ColorScheme;
@@ -39,6 +44,8 @@ public class BingoTeamHelperPanel extends PluginPanel
 
 	private final JPanel teamsContainer = new JPanel(new DynamicGridLayout(0, 1, 0, 8));
 	private final List<TeamBoxPanel> teamBoxes = new ArrayList<>();
+	private TeamBoxPanel dragSource;
+	private AWTEventListener dragReleaseListener;
 
 	@Inject
 	BingoTeamHelperPanel(
@@ -116,7 +123,12 @@ public class BingoTeamHelperPanel extends PluginPanel
 
 		for (TeamData team : teamService.getTeams())
 		{
-			TeamBoxPanel box = new TeamBoxPanel(team, colorPickerManager, ignored -> saveTeams());
+			TeamBoxPanel box = new TeamBoxPanel(
+				team,
+				colorPickerManager,
+				ignored -> saveTeams(),
+				reorderListener()
+			);
 			teamBoxes.add(box);
 			teamsContainer.add(box);
 		}
@@ -136,6 +148,112 @@ public class BingoTeamHelperPanel extends PluginPanel
 	private void saveTeams()
 	{
 		teamService.saveTeams(collectTeams());
+	}
+
+	private TeamBoxPanel.ReorderListener reorderListener()
+	{
+		return new TeamBoxPanel.ReorderListener()
+		{
+			@Override
+			public void beginReorder(TeamBoxPanel source)
+			{
+				beginDrag(source);
+			}
+
+			@Override
+			public void completeReorder(java.awt.Point pointInTeamsContainer)
+			{
+				BingoTeamHelperPanel.this.completeReorder(pointInTeamsContainer);
+			}
+		};
+	}
+
+	private void beginDrag(TeamBoxPanel source)
+	{
+		endDragListener();
+		dragSource = source;
+
+		dragReleaseListener = event ->
+		{
+			if (dragSource == null || !(event instanceof MouseEvent))
+			{
+				return;
+			}
+
+			MouseEvent mouseEvent = (MouseEvent) event;
+			if (mouseEvent.getID() != MouseEvent.MOUSE_RELEASED)
+			{
+				return;
+			}
+
+			Point pointInTeamsContainer = SwingUtilities.convertPoint(
+				mouseEvent.getComponent(),
+				mouseEvent.getPoint(),
+				teamsContainer
+			);
+			completeReorder(pointInTeamsContainer);
+		};
+
+		Toolkit.getDefaultToolkit().addAWTEventListener(dragReleaseListener, AWTEvent.MOUSE_EVENT_MASK);
+	}
+
+	private void completeReorder(Point pointInTeamsContainer)
+	{
+		if (dragSource == null)
+		{
+			endDragListener();
+			return;
+		}
+
+		TeamBoxPanel source = dragSource;
+		dragSource = null;
+		endDragListener();
+		reorderTeam(source, findTeamIndexAtY(pointInTeamsContainer.y));
+	}
+
+	private void endDragListener()
+	{
+		if (dragReleaseListener != null)
+		{
+			Toolkit.getDefaultToolkit().removeAWTEventListener(dragReleaseListener);
+			dragReleaseListener = null;
+		}
+	}
+
+	private int findTeamIndexAtY(int y)
+	{
+		for (int i = 0; i < teamBoxes.size(); i++)
+		{
+			TeamBoxPanel box = teamBoxes.get(i);
+			int midY = box.getY() + box.getHeight() / 2;
+			if (y < midY)
+			{
+				return i;
+			}
+		}
+		return Math.max(0, teamBoxes.size() - 1);
+	}
+
+	private void reorderTeam(TeamBoxPanel source, int targetIndex)
+	{
+		int fromIndex = teamBoxes.indexOf(source);
+		if (fromIndex < 0 || fromIndex == targetIndex)
+		{
+			return;
+		}
+
+		TeamBoxPanel box = teamBoxes.remove(fromIndex);
+		teamBoxes.add(targetIndex, box);
+
+		teamsContainer.removeAll();
+		for (TeamBoxPanel teamBox : teamBoxes)
+		{
+			teamsContainer.add(teamBox);
+		}
+
+		teamsContainer.revalidate();
+		teamsContainer.repaint();
+		saveTeams();
 	}
 
 	private void exportTeams()
